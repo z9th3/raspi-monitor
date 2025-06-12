@@ -246,3 +246,4 @@
 | 2025-06-11 13:43:06 | online | Raspberry Pi is online (last heartbeat: 1 hours ago) | ✅ No errors |
 | 2025-06-11 17:37:33 | online | Raspberry Pi is online (last heartbeat: 1 hours ago) | ✅ No errors |
 | 2025-06-12 07:36:15 | online | Raspberry Pi is online (last heartbeat: 1 hours ago) | ✅ No errors |
+| 2025-06-12 13:46:50 | error | No heartbeat source found. Create either heartbeat.json or an issue for heartbeat comments. | N/A |
