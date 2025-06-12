@@ -420,11 +420,11 @@ To test your configuration:
 
 ## 📜 License
 
-This project is open-source - feel free to use and modify it for your needs.
+GNU General Public License v3.
 
 ## 👤 Author
 
-Created by [dm-yeu](https://github.com/dm-yeu)
+Created by [z9th3](https://github.com/z9th3)
 
 ---
 
