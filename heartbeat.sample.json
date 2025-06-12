@@ -1,0 +1,15 @@
+{
+  "hostname": "pi",
+  "external_ip": "73.151.192.227",
+  "timestamp": "2025-06-12 08:00:02",
+  "uptime": "10:00:02 up 58 days,  2:02,  0 user,  load average: 0.00, 0.00, 0.00",
+  "memory_usage": "16.13%",
+  "disk_usage": "7.89%",
+  "cpu_temp": "47.7°C",
+  "error_log": {
+    "has_error": false,
+    "message": "Error log is empty",
+    "latest_log": "my_app_2025-06-07_error.log",
+    "log_content": null
+  }
+}
