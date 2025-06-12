@@ -1,0 +1,12 @@
+# Config file
+config.json
+
+# Heartbeat file
+heartbeat.json
+
+# Github token file
+.github-token
+
+# Log files
+*.log
+logs/

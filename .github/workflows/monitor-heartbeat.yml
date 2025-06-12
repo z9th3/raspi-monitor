@@ -1,0 +1,262 @@
+name: Monitor Raspberry Pi Heartbeat
+
+on:
+  schedule:
+    - cron: '30 7,13,17 * * *'  # Run at 7:30, 13:30, 17:30 UTC every day
+  workflow_dispatch:  # Allow manual triggering for testing
+
+permissions:
+  contents: write  # Grant write permissions to the GITHUB_TOKEN
+
+jobs:
+  check-heartbeat:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Set current time
+        id: current-time
+        run: |
+          echo "CURRENT_TIME=$(date -u '+%Y-%m-%d %H:%M:%S')" >> $GITHUB_ENV
+          echo "time=$(date -u '+%Y-%m-%d %H:%M:%S')" >> $GITHUB_ENV
+
+      - name: Check heartbeat source
+        id: check-source
+        run: |
+          # Determine if we're checking comments or the heartbeat.json file
+          if [ -f "heartbeat.json" ]; then
+            echo "source=file" >> $GITHUB_ENV
+          else
+            # Check if the heartbeat issue exists
+            ISSUE_NUMBER=1
+            if gh issue view $ISSUE_NUMBER --repo ${{ github.repository }} &>/dev/null; then
+              echo "source=issue" >> $GITHUB_ENV
+              echo "issue_number=$ISSUE_NUMBER" >> $GITHUB_ENV
+            else
+              echo "source=unknown" >> $GITHUB_ENV
+              echo "error=No heartbeat source found. Create either heartbeat.json or an issue for heartbeat comments." >> $GITHUB_ENV
+            fi
+          fi
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Check heartbeat file
+        if: env.source == 'file'
+        id: check-file
+        run: |
+          # Parse the timestamp from the heartbeat file
+          LAST_HEARTBEAT=$(jq -r '.timestamp' heartbeat.json)
+          echo "Last heartbeat: $LAST_HEARTBEAT"
+          
+          # Convert to seconds since epoch
+          LAST_HEARTBEAT_EPOCH=$(date -d "$LAST_HEARTBEAT" +%s)
+          CURRENT_EPOCH=$(date +%s)
+          
+          # Calculate difference in hours
+          DIFF_HOURS=$(( ($CURRENT_EPOCH - $LAST_HEARTBEAT_EPOCH) / 3600 ))
+          echo "Hours since last heartbeat: $DIFF_HOURS"
+          
+          # Check if heartbeat is within threshold (13 hours - slightly more than time between checks)
+          if [ $DIFF_HOURS -gt 3 ]; then
+            echo "status=offline" >> $GITHUB_ENV
+            echo "message=Raspberry Pi hasn't checked in for $DIFF_HOURS hours (last: $LAST_HEARTBEAT)" >> $GITHUB_ENV
+            echo "alert_type=offline" >> $GITHUB_ENV
+          else
+            echo "status=online" >> $GITHUB_ENV
+            echo "message=Raspberry Pi is online (last heartbeat: $DIFF_HOURS hours ago)" >> $GITHUB_ENV
+            
+            # Include additional system info
+            echo "Hostname: $(jq -r '.hostname' heartbeat.json)"
+            echo "External IP: $(jq -r '.external_ip' heartbeat.json)"
+            echo "Uptime: $(jq -r '.uptime' heartbeat.json)"
+            echo "Memory usage: $(jq -r '.memory_usage' heartbeat.json)"
+            echo "Disk usage: $(jq -r '.disk_usage' heartbeat.json)"
+            echo "CPU temperature: $(jq -r '.cpu_temp' heartbeat.json)"
+            echo "Reported by: $(jq -r '.reported_by // "unknown"' heartbeat.json)"
+            
+            # Check for error logs
+            if jq -e '.error_log.has_error' heartbeat.json &>/dev/null && [ "$(jq -r '.error_log.has_error' heartbeat.json)" = "true" ]; then
+              echo "has_error_logs=true" >> $GITHUB_ENV
+              echo "error_log_message=$(jq -r '.error_log.message' heartbeat.json)" >> $GITHUB_ENV
+              echo "error_log_file=$(jq -r '.error_log.latest_log' heartbeat.json)" >> $GITHUB_ENV
+              echo "error_log_content=$(jq -r '.error_log.log_content' heartbeat.json | sed -e 's/$/\\n/' | tr -d '\n')" >> $GITHUB_ENV
+              echo "alert_type=error_log" >> $GITHUB_ENV
+            else
+              echo "has_error_logs=false" >> $GITHUB_ENV
+            fi
+          fi
+
+      - name: Check heartbeat issue comments
+        if: env.source == 'issue'
+        id: check-issue
+        run: |
+          # Get the most recent comment timestamp
+          ISSUE_NUMBER="${{ env.issue_number }}"
+          LAST_COMMENT_TIME=$(gh api repos/${{ github.repository }}/issues/$ISSUE_NUMBER/comments \
+                             --jq 'max_by(.created_at) | .created_at')
+          
+          if [ -z "$LAST_COMMENT_TIME" ]; then
+            echo "status=unknown" >> $GITHUB_ENV
+            echo "message=No heartbeat comments found in issue #$ISSUE_NUMBER" >> $GITHUB_ENV
+            echo "alert_type=offline" >> $GITHUB_ENV
+            exit 0
+          fi
+          
+          echo "Last heartbeat comment: $LAST_COMMENT_TIME"
+          
+          # Convert to seconds since epoch
+          LAST_COMMENT_EPOCH=$(date -d "$LAST_COMMENT_TIME" +%s)
+          CURRENT_EPOCH=$(date +%s)
+          
+          # Calculate difference in hours
+          DIFF_HOURS=$(( ($CURRENT_EPOCH - $LAST_COMMENT_EPOCH) / 3600 ))
+          echo "Hours since last heartbeat: $DIFF_HOURS"
+          
+          # Check if heartbeat is within threshold (13 hours - slightly more than time between checks)
+          if [ $DIFF_HOURS -gt 13 ]; then
+            echo "status=offline" >> $GITHUB_ENV
+            echo "message=Raspberry Pi hasn't checked in for $DIFF_HOURS hours (last: $LAST_COMMENT_TIME)" >> $GITHUB_ENV
+            echo "alert_type=offline" >> $GITHUB_ENV
+          else
+            echo "status=online" >> $GITHUB_ENV
+            echo "message=Raspberry Pi is online (last heartbeat: $DIFF_HOURS hours ago)" >> $GITHUB_ENV
+            
+            # Get last comment content for system info
+            LAST_COMMENT=$(gh api repos/${{ github.repository }}/issues/$ISSUE_NUMBER/comments \
+                          --jq 'max_by(.created_at) | .body')
+            echo "Last comment details:"
+            echo "$LAST_COMMENT"
+          fi
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Send email notification for offline status
+        if: |
+          env.alert_type == 'offline' ||
+          (env.source == 'unknown')
+        run: |
+          # Create email content with HTML
+          EMAIL_CONTENT=$(cat << EOF
+          {
+            "personalizations": [
+              {
+                "to": [
+                  {
+                    "email": "${{ secrets.NOTIFICATION_EMAIL }}"
+                  }
+                ]
+              }
+            ],
+            "from": {
+              "email": "dm-yeu@mail.de"
+            },
+            "subject": "⚠️ Alert: Raspberry Pi Status - Offline",
+            "content": [
+              {
+                "type": "text/html",
+                "value": "<p><strong>${{ env.message }}</strong></p><p>This is an automated alert from GitHub Actions.</p><p>Current Time (UTC): ${{ env.CURRENT_TIME }}</p><p>Checked by: dm-yeu</p>"
+              }
+            ]
+          }
+          EOF
+          )
+          
+          # Send email using SendGrid API
+          curl -X POST \
+            https://api.sendgrid.com/v3/mail/send \
+            -H "Authorization: Bearer ${{ secrets.SENDGRID_API_KEY }}" \
+            -H "Content-Type: application/json" \
+            -d "$EMAIL_CONTENT"
+          
+          echo "Email notification sent via SendGrid API"
+      
+      - name: Send email notification for error logs
+        if: env.alert_type == 'error_log' && env.has_error_logs == 'true'
+        run: |
+          # Create email content with HTML
+          EMAIL_CONTENT=$(cat << EOF
+          {
+            "personalizations": [
+              {
+                "to": [
+                  {
+                    "email": "${{ secrets.NOTIFICATION_EMAIL }}"
+                  }
+                ]
+              }
+            ],
+            "from": {
+              "email": "dm-yeu@mail.de"
+            },
+            "subject": "⚠️ Alert: Raspberry Pi Error Logs Detected",
+            "content": [
+              {
+                "type": "text/html",
+                "value": "<h2>Error Logs Detected on Raspberry Pi</h2><p><strong>Error Log File:</strong> ${{ env.error_log_file }}</p><p><strong>Message:</strong> ${{ env.error_log_message }}</p><p><strong>Log Preview:</strong></p><pre>${{ env.error_log_content }}</pre><p>This is an automated alert from GitHub Actions.</p><p>Current Time (UTC): ${{ env.CURRENT_TIME }}</p><p>Checked by: dm-yeu</p>"
+              }
+            ]
+          }
+          EOF
+          )
+          
+          # Send email using SendGrid API
+          curl -X POST \
+            https://api.sendgrid.com/v3/mail/send \
+            -H "Authorization: Bearer ${{ secrets.SENDGRID_API_KEY }}" \
+            -H "Content-Type: application/json" \
+            -d "$EMAIL_CONTENT"
+          
+          echo "Email notification sent via SendGrid API for error logs"
+
+      - name: Update check history
+        if: always()
+        run: |
+          mkdir -p .github/monitor-history
+          
+          # Create or update history file
+          HISTORY_FILE=".github/monitor-history/check-history.md"
+          
+          if [ ! -f "$HISTORY_FILE" ]; then
+            echo "# Raspberry Pi Monitoring History" > "$HISTORY_FILE"
+            echo "" >> "$HISTORY_FILE"
+            echo "| Date (UTC) | Status | Message | Error Logs |" >> "$HISTORY_FILE"
+            echo "|------------|--------|---------|------------|" >> "$HISTORY_FILE"
+          fi
+          
+          # Determine status and message
+          STATUS="Unknown"
+          MESSAGE="Check did not complete successfully"
+          ERROR_LOG_STATUS="N/A"
+          
+          if [ "${{ env.status }}" != "" ]; then
+            STATUS="${{ env.status }}"
+            MESSAGE="${{ env.message }}"
+            
+            if [ "${{ env.has_error_logs }}" == "true" ]; then
+              ERROR_LOG_STATUS="⚠️ ${{ env.error_log_file }}"
+            elif [ "${{ env.has_error_logs }}" == "false" ]; then
+              ERROR_LOG_STATUS="✅ No errors"
+            fi
+          elif [ "${{ env.source }}" == "unknown" ]; then
+            STATUS="error"
+            MESSAGE="${{ env.error }}"
+          fi
+          
+          # Add new entry to history
+          echo "| ${{ env.CURRENT_TIME }} | $STATUS | $MESSAGE | $ERROR_LOG_STATUS |" >> "$HISTORY_FILE"
+          
+          # Commit and push if there are changes
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          git add "$HISTORY_FILE"
+          
+          if git diff --staged --quiet; then
+            echo "No changes to commit"
+          else
+            git commit -m "Update monitoring history [skip ci]"
+            git push
+          fi
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CURRENT_TIME: ${{ env.CURRENT_TIME }}

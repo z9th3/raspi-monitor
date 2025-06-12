@@ -1,0 +1,13 @@
+{
+  "heartbeat_log": "/path/to/this/project/logs/heartbeat.log",
+  "log_days_to_keep": 30,
+  "timestamp_file": "heartbeat.json",
+  "github": {
+    "repo": "<github-username>/<github-repo>",
+    "token_file": ".github-token"
+  },
+  "error_monitoring": {
+    "log_dir": "/path/to/errorlogs/to/monitor/",
+    "log_file_pattern": "^my_script_(\\d{4})-(\\d{2})-(\\d{2})_error\\.log$"
+  }
+}
