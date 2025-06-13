@@ -405,12 +405,4 @@ To test your configuration:
 
 ## 📜 License
 
-This project is open-source - feel free to use and modify it for your needs.
-
-## 👤 Author
-
-Created by [dm-yeu](https://github.com/dm-yeu)
-
----
-
-💡 **Tip**: After setup, you can manually trigger the GitHub Actions workflow by going to the "Actions" tab in your repository and selecting "Monitor Raspberry Pi Heartbeat", then clicking "Run workflow".
+GNU General Public License v3
