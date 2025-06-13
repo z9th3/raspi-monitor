@@ -14,24 +14,9 @@ This project provides a complete solution for monitoring your Raspberry Pi's hea
 4. Sending email alerts if issues are detected
 5. Maintaining a monitoring history
 
-## 🌟 Key Advantages
-
-**🔒 No Network Configuration Required**: Your Raspberry Pi doesn't need to be accessible from the internet. No need for:
-- Port forwarding on your router
-- Reverse proxy setup (nginx, Apache, etc.)
-- Dynamic DNS configuration
-- Opening firewall ports
-
-**🌐 Works with Dynamic IP Addresses**: Perfect for home networks where your ISP changes your IP address regularly. The monitoring works regardless of:
-- DHCP IP changes on your local network
-- ISP changing your external IP address
-- Moving your Pi between different networks
-- Network outages that result in new IP assignments
-
-**☁️ Outbound-Only Communication**: The Pi only makes outbound HTTPS connections to GitHub's API, which works through any standard internet connection without special network setup.
-
 ## 🚀 Features
 
+- **No special network configuration needed**: Works behind firewalls, NAT, with dynamic IPs, requires only outbound HTTPS, and does not expose your Pi to the Internet.
 - **Regular System Reporting**: Sends heartbeat status at configurable intervals (every 2 hours by default)
 - **System Metrics**: Tracks CPU temperature, memory usage, disk usage, uptime, and external IP
 - **Error Log Monitoring**: Detects errors in specified log directories
@@ -58,15 +43,15 @@ Since this project uses GitHub Actions for monitoring, you'll need to create you
    # Download/clone the original repository
    git clone https://github.com/dm-yeu/yeu-raspi-monitor.git
    cd yeu-raspi-monitor
-   
+
    # Remove the original git history
    rm -rf .git
-   
+
    # Initialize your own git repository
    git init
    git add .
    git commit -m "Initial commit"
-   
+
    # Create a new repository on GitHub (via web interface)
    # Then add your repository as the remote origin
    git remote add origin https://github.com/YOUR_USERNAME/YOUR_REPO_NAME.git
@@ -95,12 +80,12 @@ Since this project uses GitHub Actions for monitoring, you'll need to create you
    ```
 
 3. **Configure the system**:
-   
+
    **Create the configuration file**:
    ```bash
    cp config.example.json config.json
    ```
-   
+
    **Edit the configuration file** (`config.json`) with your specific settings:
    ```json
    {
@@ -117,7 +102,7 @@ Since this project uses GitHub Actions for monitoring, you'll need to create you
      }
    }
    ```
-   
+
    **Create a GitHub Personal Access Token**:
    - Go to GitHub **Settings** > **Developer settings** > **Personal access tokens** > **Tokens (classic)**
    - Click "Generate new token (classic)"
@@ -125,7 +110,7 @@ Since this project uses GitHub Actions for monitoring, you'll need to create you
    - Set expiration as needed (or "No expiration" for convenience)
    - Select scopes: **repo** (Full control of private repositories)
    - Click "Generate token" and copy the token
-   
+
    **Create the GitHub token file**:
    ```bash
    echo "your_github_personal_access_token_here" > .github-token
@@ -147,7 +132,7 @@ Since this project uses GitHub Actions for monitoring, you'll need to create you
 6. **Make the scripts executable**:
    ```bash
    chmod +x raspberry_heartbeat.js
-   chmod +x trim_heartbeat_log.sh
+   chmod +x trim_heartbeat_log.js
    ```
 
 7. **Set up cron jobs** to run the scripts regularly:
@@ -158,9 +143,9 @@ Since this project uses GitHub Actions for monitoring, you'll need to create you
    ```
    # Run the heartbeat script every 2 hours
    0 */2 * * * node /path/to/this/project/raspberry_heartbeat.js >> /path/to/this/project/logs/heartbeat.log 2>&1
-   
+
    # Trim the log file to keep only the configured number of days (runs daily at midnight)
-   0 0 * * * /path/to/this/project/trim_heartbeat_log.sh
+   0 0 * * * node /path/to/this/project/trim_heartbeat_log.js >> /path/to/this/project/logs/heartbeat.log 2>&1
    ```
 
 ### Step 3: Configure GitHub Actions & Notifications
@@ -269,7 +254,7 @@ All configuration is managed through the `config.json` file. Use `config.example
 
 ### Log Management
 
-The `trim_heartbeat_log.sh` script reads configuration from `config.json` and:
+The `trim_heartbeat_log.js` script reads configuration from `config.json` and:
 - Keeps only log entries from the past `log_days_to_keep` days
 - Runs daily at midnight
 - Adds its own entry confirming maintenance completion
@@ -280,7 +265,7 @@ The `trim_heartbeat_log.sh` script reads configuration from `config.json` and:
 - `config.json`: **Your actual configuration file (not tracked by git)**
 - `raspberry_heartbeat.js`: Collects and reports system information
 - `.github/workflows/monitor-heartbeat.yml`: GitHub Actions workflow that checks the heartbeat
-- `trim_heartbeat_log.sh`: Script to manage log file size
+- `trim_heartbeat_log.js`: Script to manage log file size
 - `.github-token`: GitHub Personal Access Token (create this file)
 - `.github/monitor-history/check-history.md`: History of all monitoring checks (auto-generated)
 - `heartbeat.json`: Current system status (auto-generated, name configurable)
@@ -363,7 +348,7 @@ The GitHub Actions workflow runs at scheduled times (7:30, 13:30, 17:30 UTC) and
    - Make sure you added both `SENDGRID_API_KEY` and `NOTIFICATION_EMAIL` secrets
 
 5. **Log file getting too large**:
-   - Verify the `trim_heartbeat_log.sh` cron job is running
+   - Verify the `trim_heartbeat_log.js` cron job is running
    - Check the `log_days_to_keep` configuration value
    - Verify the heartbeat log path is correct in `config.json`
 
@@ -400,7 +385,7 @@ To test your configuration:
 
 2. **Test the log trimming script**:
    ```bash
-   ./trim_heartbeat_log.sh
+   node trim_heartbeat_log.js
    ```
 
 3. **Verify configuration parsing**:
@@ -420,12 +405,12 @@ To test your configuration:
 
 ## 📜 License
 
-GNU General Public License v3.
+This project is open-source - feel free to use and modify it for your needs.
 
 ## 👤 Author
 
-Created by [z9th3](https://github.com/z9th3)
+Created by [dm-yeu](https://github.com/dm-yeu)
 
 ---
 
-💡 **Tip**: After setup, you can manually trigger the GitHub Actions workflow by going to the "Actions" tab in your repository and selecting "Monitor Raspberry Pi Heartbeat", then clicking "Run workflow". This is useful for testing your configuration.
+💡 **Tip**: After setup, you can manually trigger the GitHub Actions workflow by going to the "Actions" tab in your repository and selecting "Monitor Raspberry Pi Heartbeat", then clicking "Run workflow".
