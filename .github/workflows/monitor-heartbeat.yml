@@ -10,6 +10,7 @@ permissions:
 
 jobs:
   check-heartbeat:
+    if: github.repository != 'z9th3/raspi-monitor'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
