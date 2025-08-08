@@ -41,8 +41,8 @@ Since this project uses GitHub Actions for monitoring, you'll need to create you
 2. **If you chose Option B (manual setup)**:
    ```bash
    # Download/clone the original repository
-   git clone https://github.com/dm-yeu/yeu-raspi-monitor.git
-   cd yeu-raspi-monitor
+   git clone https://github.com/z9th3/raspi-monitor.git
+   cd raspi-monitor
 
    # Remove the original git history
    rm -rf .git
@@ -99,7 +99,8 @@ Since this project uses GitHub Actions for monitoring, you'll need to create you
      "error_monitoring": {
        "log_dir": "/path/to/errorlogs/to/monitor/",
        "log_file_pattern": "^my_script_(\\d{4})-(\\d{2})-(\\d{2})_error\\.log$"
-     }
+     },
+   "default_http_timeout": 8000
    }
    ```
 
@@ -181,6 +182,7 @@ All configuration is managed through the `config.json` file. Use `config.example
 | `github.token_file` | Path to GitHub token file (relative to project) | `".github-token"` |
 | `error_monitoring.log_dir` | Directory to monitor for error logs | `"/var/log/myapp/"` |
 | `error_monitoring.log_file_pattern` | Regex pattern for error log files | `"^app_(\\d{4})-(\\d{2})-(\\d{2})_error\\.log$"` |
+| `default_http_timeout` | Default timeout for http requests in \[ms\] | `8000` |
 
 ### Configuration Examples
 
@@ -197,7 +199,8 @@ All configuration is managed through the `config.json` file. Use `config.example
   "error_monitoring": {
     "log_dir": "/home/pi/myapp/logs/",
     "log_file_pattern": "^error_(\\d{4})-(\\d{2})-(\\d{2})\\.log$"
-  }
+  },
+"default_http_timeout": 8000
 }
 ```
 
@@ -214,7 +217,8 @@ All configuration is managed through the `config.json` file. Use `config.example
   "error_monitoring": {
     "log_dir": "/var/log/myservice/",
     "log_file_pattern": "^service_error_(\\d{4})(\\d{2})(\\d{2})\\.log$"
-  }
+  },
+"default_http_timeout": 8000
 }
 ```
 
@@ -231,7 +235,8 @@ All configuration is managed through the `config.json` file. Use `config.example
   "error_monitoring": {
     "log_dir": "/home/developer/app/logs/",
     "log_file_pattern": "^dev_error_(\\d{4})-(\\d{2})-(\\d{2})\\.log$"
-  }
+  },
+"default_http_timeout": 8000
 }
 ```
 
@@ -269,6 +274,7 @@ The `trim_heartbeat_log.js` script reads configuration from `config.json` and:
 - `.github-token`: GitHub Personal Access Token (create this file)
 - `.github/monitor-history/check-history.md`: History of all monitoring checks (auto-generated)
 - `heartbeat.json`: Current system status (auto-generated, name configurable)
+- `package.json`: Environment information
 - `logs/heartbeat.log`: Log of all heartbeat operations (path configurable)
 
 ### Security Configuration
