@@ -1,0 +1,22 @@
+{
+  "name": "raspi-monitor",
+  "version": "0.1.1",
+  "description": "Monitors the status of a raspberry pi without external dependencies.",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/z9th3/raspi-monitor.git"
+  },
+  "bugs": {
+    "url": "https://github.com/z9th3/raspi-monitor/issues"
+  },
+  "homepage": "https://github.com/z9th3/raspi-monitor#readme",
+  "engines": {
+    "node": ">=22"
+  },
+  "type": "commonjs",
+  "scripts": {
+    "send-heartbeat": "node raspberry_heartbeat.js",
+    "trim-log": "node trim_heartbeat_log.js"
+  },
+  "dependencies": {}
+}
