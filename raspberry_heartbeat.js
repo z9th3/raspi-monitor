@@ -30,6 +30,7 @@ const GITHUB_REPO = CONFIG.github.repo;
 const TIMESTAMP_FILE = CONFIG.timestamp_file;
 const ERROR_LOGS_DIR = CONFIG.error_monitoring.log_dir;
 const ERROR_LOG_PATTERN = new RegExp(CONFIG.error_monitoring.log_file_pattern);
+const HTTP_TIMEOUT = CONFIG.default_http_timeout;
 
 // Read github Personal Access Token from config file
 const GITHUB_TOKEN = (() => {
@@ -50,36 +51,72 @@ const GITHUB_TOKEN = (() => {
  * @returns {Promise<Object>} - Response data
  */
 function httpsRequest(options, data = null) {
+
+  // Force no keep-alive to reduce ECONNRESET on some networks
+  const agent = new https.Agent({ keepAlive: false });
+
+  // Compute a valid timeout value
+  const timeoutMs =
+    typeof options.timeout === 'number' && Number.isFinite(options.timeout)
+      ? options.timeout
+      : HTTP_TIMEOUT;
+
   return new Promise((resolve, reject) => {
-    const req = https.request(options, (res) => {
+    const req = https.request(
+    {
+      ...options,
+      agent
+    },
+    (res) => {
       let responseData = '';
       
       res.on('data', (chunk) => {
         responseData += chunk;
       });
+
+      res.on('aborted', () => {
+          reject(new Error('Response aborted'));
+        });
       
       res.on('end', () => {
-        try {
-          const parsedData = responseData ? JSON.parse(responseData) : {};
-          resolve({ 
-            statusCode: res.statusCode, 
-            headers: res.headers, 
-            data: parsedData 
-          });
-        } catch (e) {
-          reject(new Error(`Failed to parse response: ${e.message}`));
-        }
-      });
+          try {
+            // Try to parse JSON; if not JSON, return raw string
+            let parsedData = {};
+            if (responseData) {
+              try {
+                parsedData = JSON.parse(responseData);
+              } catch {
+                parsedData = { raw: responseData };
+              }
+            }
+            resolve({
+              statusCode: res.statusCode,
+              headers: res.headers,
+              data: parsedData
+            });
+          } catch (e) {
+            reject(new Error(`Failed to parse response: ${e.message}`));
+          }
+        });
+      }
+    );
+
+    // Ensure a numeric timeout is always provided
+    req.setTimeout(timeoutMs, () => {
+      req.destroy(new Error('Request timed out'));
     });
-    
+
     req.on('error', (error) => {
       reject(error);
     });
-    
+
     if (data) {
-      req.write(typeof data === 'string' ? data : JSON.stringify(data));
+      const body = typeof data === 'string' ? data : JSON.stringify(data);
+      req.setHeader('Content-Type', 'application/json');
+      req.setHeader('Content-Length', Buffer.byteLength(body));
+      req.write(body);
     }
-    
+
     req.end();
   });
 }
@@ -89,37 +126,46 @@ function httpsRequest(options, data = null) {
  * @returns {Promise<String>} - External IP address
  */
 async function getExternalIp() {
-  try {
-    const options = {
-      hostname: 'api.ipify.org',
-      port: 443,
-      path: '/',
-      method: 'GET'
-    };
-    
-    return new Promise((resolve, reject) => {
-      const req = https.request(options, (res) => {
-        let rawData = '';
-        
-        res.on('data', (chunk) => {
-          rawData += chunk;
+  // Try a few endpoints with a short timeout each; never throw
+  const candidates = [
+    { hostname: 'api.ipify.org', path: '/', port: 443 },
+    { hostname: 'ifconfig.me', path: '/ip', port: 443 }
+  ];
+
+  for (const c of candidates) {
+    try {
+      const ip = await new Promise((resolve, reject) => {
+        const req = https.request(
+          {
+            hostname: c.hostname,
+            port: c.port,
+            path: c.path,
+            method: 'GET',
+            timeout: 5000
+          },
+          (res) => {
+            let rawData = '';
+            res.on('data', (chunk) => (rawData += chunk));
+            res.on('end', () => resolve(rawData.trim()));
+          }
+        );
+
+        // Timeout and error handling: resolve gracefully
+        req.setTimeout(5000, () => {
+          req.destroy(new Error('Timeout'));
         });
-        
-        res.on('end', () => {
-          resolve(rawData.trim());
-        });
+        req.on('error', (err) => reject(err));
+        req.end();
       });
-      
-      req.on('error', (error) => {
-        reject(error);
-      });
-      
-      req.end();
-    });
-  } catch (error) {
-    console.error('Failed to get external IP:', error.message);
-    return "Unable to determine";
+
+      if (ip) return ip;
+    } catch (err) {
+      console.warn(`External IP lookup failed via ${c.hostname}: ${err.message}`);
+    }
   }
+
+  // Final fallback: never reject
+  return 'Unable to determine';
 }
 
 /**
@@ -339,15 +385,22 @@ async function updateGithubFile(fileContent) {
  */
 async function main() {
   try {
-    // Get system information
     const systemInfo = await getSystemInfo();
-    
-    // Update GitHub file
-    const success = await updateGithubFile(systemInfo);
-    
+
+    // Retry up to 2 times on failure with backoff
+    let success = false;
+    const attempts = 3;
+    for (let i = 1; i <= attempts; i++) {
+      success = await updateGithubFile(systemInfo);
+      if (success) break;
+      const backoffMs = i * 2000; // 2s, 4s
+      console.warn(`GitHub update failed (attempt ${i}/${attempts}). Retrying in ${backoffMs} ms...`);
+      await new Promise((r) => setTimeout(r, backoffMs));
+    }
+
     const statusMessage = success ? 'successful' : 'failed';
     console.log(`Heartbeat update ${statusMessage} at ${systemInfo.timestamp} UTC`);
-    
+
     if (!success) {
       console.error('Failed to update GitHub file. Check your token and network connection.');
     }
